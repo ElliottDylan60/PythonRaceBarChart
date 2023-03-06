@@ -65,9 +65,10 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 	if opacity_step_offset == None:
 		opacity_step_offset = int(math.ceil(float(-255 / len(frames))))
 
-	base_image_width = abs(frame_size[0] * len(frames))
-	base_image_height = abs(frame_size[1] * len(frames))
-	base_image = Image.new("RGBA", (base_image_width, base_image_height))
+	# base_image_width = abs(frame_size[0] * len(frames))
+	# base_image_height = abs(frame_size[1] * len(frames))
+	# base_image = Image.new("RGBA", (base_image_width, base_image_height))
+	base_image = Image.new("RGBA", (10000, 10000))
 	for image_file_path_index in reversed(range(len(frames))):
 		image_file_path = frames[image_file_path_index]
 		print("Image: " + image_file_path)
@@ -98,7 +99,8 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 	photo_image = ImageTk.PhotoImage(image=base_image)
 	# TODO: These are magic numbers because I cannot wrap my head around what this is even doing or why it function the way it does.
 	# canvas.create_image(100, -200, image=photo_image, anchor="nw")
-	canvas.create_image(1920 / 2 + 100, 1080 / 2, image=photo_image, anchor="center")
+	# canvas.create_image(1920 / 2 + 100, 1080 / 2, image=photo_image, anchor="center")
+	canvas.create_image(0, -250, image=photo_image, anchor="nw")
 	# canvas.create_image(0, 1080 / 2 + 500, image=photo_image, anchor="sw")
 	canvas.images.append(photo_image)
 
@@ -114,43 +116,59 @@ canvas = None
 
 global_frames_to_render = None
 global_increment_frames = None
+global_x_offset = None
+global_y_offset = None
+global_animation_interval = None
+
 current_frame_list = []
 time_since_last_juxtapose = None
-def juxtapose_next(window : Tk, canvas : Canvas, frames_to_render = 3, increment_frames : int | None = None, override_cooldown_timer = False):
+current_juxtapose_timer = None
+def juxtapose_next(canvas : Canvas, frames_to_render = 3, increment_frames : int | None = None, x_offset = 10, y_offset = -10):
+	global current_frame_list
+	actual_increment_frames = frames_to_render if increment_frames == None else increment_frames
+	
+	canvas.delete("all")
+
+	if len(current_frame_list) < frames_to_render:
+		current_frame_list.extend(frames)
+
+	juxtapose(canvas, current_frame_list[:frames_to_render], x_offset, y_offset, minimum_opacity=100)
+
+	for _ in range(actual_increment_frames):
+		if len(current_frame_list) <= 0:
+			break
+		current_frame_list.pop(0)
+
+def juxtapose_next_global(window : Tk, canvas : Canvas, override_cooldown_timer = False):
 	global time_since_last_juxtapose
 
-	if override_cooldown_timer or time_since_last_juxtapose == None or timedelta(seconds=timer() - time_since_last_juxtapose).seconds <= 1:
-		global current_frame_list
-		actual_increment_frames = frames_to_render if increment_frames == None else increment_frames
-		
-		canvas.delete("all")
+	global_animation_delay_interval = int(global_animation_interval.get())
 
-		if len(current_frame_list) < frames_to_render:
-			current_frame_list.extend(frames)
+	time_difference = timedelta(seconds=timer() - time_since_last_juxtapose).seconds if time_since_last_juxtapose != None else 0
+	if override_cooldown_timer or time_since_last_juxtapose == None or time_difference >= global_animation_delay_interval:
+		try:
+			frames_to_render = int(global_frames_to_render.get())
+			increment_frames = int(global_increment_frames.get())
+			x_offset = int(global_x_offset.get())
+			y_offset = int(global_y_offset.get())
 
-		juxtapose(canvas, current_frame_list[:frames_to_render], 10, -10, minimum_opacity=100)
+			juxtapose_next(canvas, frames_to_render, increment_frames, x_offset, y_offset)
 
-		for _ in range(actual_increment_frames):
-			if len(current_frame_list) <= 0:
-				break
-			current_frame_list.pop(0)
+			time_since_last_juxtapose = timer()
+		except:
+			pass
 
-	time_since_last_juxtapose = timer()
-	return window.after(1000, juxtapose_next, window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
+	return window.after(1000, juxtapose_next_global, window, canvas)
 
-juxtaposition_frame_amount_spin_box : tkinter.StringVar = None
+juxtaposition_increment_frames_spin_box : tkinter.StringVar = None
 
 def spinbox_changed():
-	juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()), True)
-	juxtaposition_frame_amount_spin_box.to = int(global_frames_to_render.get())
-	# Should force the increment frames spinbox to be from 1 to the value of global_frames_to_render, but doesn't work for some reason.
-	global_increment_frames.set(int(global_frames_to_render.get()))
-	juxtaposition_frame_amount_spin_box.pack()
+	juxtaposition_increment_frames_spin_box.to = int(global_frames_to_render.get())
 	
 def main():
 	global window, canvas
-	global global_frames_to_render, global_increment_frames
-	global juxtaposition_frame_amount_spin_box
+	global global_frames_to_render, global_increment_frames, global_x_offset, global_y_offset, global_animation_interval
+	global juxtaposition_increment_frames_spin_box
 
 	window = Tk()
 	window.title("Bar Chart Race Juxtaposition")
@@ -158,21 +176,43 @@ def main():
 
 	global_frames_to_render = tkinter.StringVar(value=3)
 	global_increment_frames = tkinter.StringVar(value=3)
+	global_x_offset = tkinter.StringVar(value=10)
+	global_y_offset = tkinter.StringVar(value=-10)
+	global_animation_interval = tkinter.StringVar(value=1)
 
 	juxtaposition_frame_amount_label = Label(window, text ="Number of Frames to Show", font = "50") 
 	juxtaposition_frame_amount_label.pack()
 
-	juxtaposition_frame_amount_spin_box = Spinbox(window, from_ = 1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)   
+	juxtaposition_frame_amount_spin_box = Spinbox(window, from_=1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)   
 	juxtaposition_frame_amount_spin_box.pack()
 
 	juxtaposition_frame_increment_label = Label(window, text ="Frame Cycle Amount", font = "50") 
 	juxtaposition_frame_increment_label.pack()
 
-	juxtaposition_frame_amount_spin_box = Spinbox(window, from_ = 1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)   
-	juxtaposition_frame_amount_spin_box.pack()
+	juxtaposition_increment_frames_spin_box = Spinbox(window, from_=1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)   
+	juxtaposition_increment_frames_spin_box.pack()
+
+	juxtaposition_x_offset_label = Label(window, text ="X Offset", font = "50") 
+	juxtaposition_x_offset_label.pack()
+
+	juxtaposition_x_offset_spin_box = Spinbox(window, from_=-250, to=250, textvariable=global_x_offset, command=spinbox_changed)   
+	juxtaposition_x_offset_spin_box.pack()
+
+	juxtaposition_y_offset_label = Label(window, text ="Y Offset", font = "50") 
+	juxtaposition_y_offset_label.pack()
+
+	juxtaposition_y_offset_spin_box = Spinbox(window, from_=-250, to=250, textvariable=global_y_offset, command=spinbox_changed)   
+	juxtaposition_y_offset_spin_box.pack()
+
+	juxtaposition_y_offset_label = Label(window, text ="Animation Interval", font = "50") 
+	juxtaposition_y_offset_label.pack()
+
+	juxtaposition_animation_interval_spin_box = Spinbox(window, from_=1, to=60, textvariable=global_animation_interval, command=spinbox_changed)   
+	juxtaposition_animation_interval_spin_box.pack()
 
 	canvas = create_canvas(window, 1920, 1080)
-	juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
+	# juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
+	juxtapose_next_global(window, canvas)
 
 	window.mainloop()
 
