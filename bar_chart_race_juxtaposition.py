@@ -1,116 +1,17 @@
+import re
+import os
 import math
-from tkinter import BOTH, BOTTOM, HORIZONTAL, LEFT, RIGHT, VERTICAL, X, Y, Frame, Label, Scrollbar, Spinbox, Tk, Canvas
-import tkinter
+
+from datetime import timedelta
+from timeit import default_timer as timer
+
+from tkinter import BOTH, Frame, Label, Spinbox, Tk, Canvas, StringVar
 import pandas as pd
 from raceplotly.plots import barplot
 from PIL import Image, ImageTk
-import os
-import re
-from timeit import default_timer as timer
-from datetime import timedelta
 
 frames_folder = "frames"
 frames = []
-
-# Taken From 3/5/2023 5:39 PM: https://stackoverflow.com/a/11150413
-def natural_sort(l): 
-    convert = lambda text: int(text) if text.isdigit() else text.lower() 
-    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)] 
-    return sorted(l, key=alphanum_key)
-
-def generate_frames():
-	df = pd.read_csv('https://raw.githubusercontent.com/lc5415/raceplotly/main/example/dataset/FAOSTAT_data.csv')
-
-	my_raceplot = barplot(df,  item_column='Item', value_column='Value', time_column='Year')
-	my_raceplot_plot = my_raceplot.plot(item_label = 'Top 10 crops', value_label = 'Production quantity (tonnes)', frame_duration = 1)
-
-	print("Writing " + str(len(my_raceplot_plot.frames)) + " frames to disk...")
-	os.makedirs(frames_folder, exist_ok=True)
-
-	print("Saving Images...")
-	# Taken From 3/5/2023 4:03 PM: https://stackoverflow.com/a/73788157
-	# generate images for each step in animation
-	for s, fr in enumerate(my_raceplot_plot.frames):
-		# set main traces to appropriate traces within plotly frame
-		my_raceplot_plot.update(data=fr.data)
-		# move slider to correct place
-		my_raceplot_plot.layout.sliders[0].update(active=s)
-		# generate image of current state
-		file_name = frames_folder + os.sep + "frame" + str(len(frames)) + ".png"
-		my_raceplot_plot.write_image(file=file_name, format="png")
-		frames.append(file_name)
-		print("Added frame " + str(len(frames)) + " of " + str(len(my_raceplot_plot.frames)))
-
-if os.path.exists(frames_folder):
-	for file_name in os.listdir(frames_folder):
-		frames.append(frames_folder + os.sep + file_name)
-	# frames = sorted(frames)
-	frames = natural_sort(frames)
-
-if len(frames) <= 0:
-	generate_frames()
-
-def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_offset = -100, opacity_step_offset : int | None = None, minimum_opacity = 60):
-	print("Juxtaposing")
-	canvas.images = []
-
-	current_x_offset = (len(frames) - 1) * x_step_offset
-	current_y_offset = (len(frames) - 1) * y_step_offset
-	current_opacity_offset = -255
-
-	frame = Image.open(frames[0])
-	frame_size = frame.size
-	frame.close()
-
-	if opacity_step_offset == None:
-		opacity_step_offset = int(math.ceil(float(-255 / len(frames))))
-
-	# base_image_width = abs(frame_size[0] * len(frames))
-	# base_image_height = abs(frame_size[1] * len(frames))
-	# base_image = Image.new("RGBA", (base_image_width, base_image_height))
-	base_image = Image.new("RGBA", (10000, 10000))
-	for image_file_path_index in reversed(range(len(frames))):
-		image_file_path = frames[image_file_path_index]
-		print("Image: " + image_file_path)
-
-		# Taken From 3/4/2023 4:06 PM: https://stackoverflow.com/a/765829
-		image = Image.open(image_file_path)
-		image = image.convert("RGBA")
-		pixel_data = image.load()
-
-		width, height = image.size
-		for y in range(height):
-			for x in range(width):
-				pixel_color_rgba = pixel_data[x, y]
-
-				# Make all white pixels in the image transparent.
-				if pixel_color_rgba == (255, 255, 255, 255):
-					pixel_data[x, y] = (255, 255, 255, 0)
-				elif image_file_path_index != 0:
-					pixel_data[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], max(min(pixel_color_rgba[3] + current_opacity_offset, 255), minimum_opacity))
-
-		base_image.paste(image, (current_x_offset, current_y_offset + frame_size[1]), image)
-
-		current_x_offset -= x_step_offset
-		current_y_offset -= y_step_offset
-		current_opacity_offset -= opacity_step_offset
-
-	# base_image.save("juxtaposed.png")
-	photo_image = ImageTk.PhotoImage(image=base_image)
-	# TODO: These are magic numbers because I cannot wrap my head around what this is even doing or why it function the way it does.
-	# canvas.create_image(100, -200, image=photo_image, anchor="nw")
-	# canvas.create_image(1920 / 2 + 100, 1080 / 2, image=photo_image, anchor="center")
-	canvas.create_image(0, -50, image=photo_image, anchor="nw")
-	# canvas.create_image(0, 1080 / 2 + 500, image=photo_image, anchor="sw")
-	canvas.images.append(photo_image)
-
-def create_canvas(root : Tk, width : int, height : int):
-	canvas = Canvas(root, width=width, height=height, bg='white')
-	canvas.images = []
-	canvas.pack(fill=BOTH, expand=True)
-	# canvas.grid(row=1)
-
-	return canvas
 
 window = None
 canvas = None
@@ -121,9 +22,103 @@ global_x_offset = None
 global_y_offset = None
 global_animation_interval = None
 
+juxtaposition_increment_frames_spin_box : StringVar = None
+
 current_frame_list = []
 time_since_last_juxtapose = None
 current_juxtapose_timer = None
+
+spinbox_width = 5
+current_column = 0
+
+# Taken From 3/5/2023 5:39 PM: https://stackoverflow.com/a/11150413
+def natural_sort(l): 
+    convert = lambda text: int(text) if text.isdigit() else text.lower() 
+    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)] 
+    return sorted(l, key=alphanum_key)
+
+def generate_frames():
+	df = pd.read_csv('https://raw.githubusercontent.com/lc5415/raceplotly/main/example/dataset/FAOSTAT_data.csv')
+
+	bar_chart_race = barplot(df,  item_column='Item', value_column='Value', time_column='Year')
+	bar_chart_race_plot = bar_chart_race.plot(item_label = 'Top 10 crops', value_label = 'Production quantity (tonnes)', frame_duration = 1)
+
+	print("Writing " + str(len(bar_chart_race_plot.frames)) + " frames to disk...")
+	os.makedirs(frames_folder, exist_ok=True)
+
+	print("Saving Images...")
+	# Taken From 3/5/2023 4:03 PM: https://stackoverflow.com/a/73788157
+	# For every frame of the Plotly chart...
+	for slider_position, frame in enumerate(bar_chart_race_plot.frames):
+		# ...update the plot with the current frame data.
+		bar_chart_race_plot.update(data=frame.data)
+		# Move the slider to the position linked with the current frame.
+		bar_chart_race_plot.layout.sliders[0].update(active=slider_position)
+		# Write the current Plotly frame to disk.
+		file_name = frames_folder + os.sep + "frame" + str(len(frames)) + ".png"
+		bar_chart_race_plot.write_image(file=file_name, format="png")
+		# Append the exported image file path to the frames list.
+		frames.append(file_name)
+		print("Added frame " + str(len(frames)) + " of " + str(len(bar_chart_race_plot.frames)))
+
+def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_offset = -100, opacity_step_offset : int | None = None, minimum_opacity = 60):
+	print("Juxtaposing...")
+	canvas.images = []
+
+	# Need to work backwards from the furthest, last element back towards the first element to ensure that the images are stacked correctly (painter's algorithm).
+	current_x_offset = (len(frames) - 1) * x_step_offset
+	current_y_offset = (len(frames) - 1) * y_step_offset
+	current_opacity_offset = -255
+
+	frame = Image.open(frames[0])
+	first_frame_width, first_frame_height = frame.size
+	frame.close()
+
+	if opacity_step_offset == None:
+		opacity_step_offset = int(math.ceil(float(-255 / len(frames))))
+
+	# Create a canvas image which will allow all juxtaposed frames to be properly written, calculated by taking the first frame size and adding the x_step_offset, then multiply for every frame to be written.
+	# TODO: This is both potentially an overestimation and a underestimation, as the first frame might be smaller than subsequent frames and the offset only consume half of the actual distance due to the frame being offset from the center.
+	new_canvas_image = Image.new("RGBA", (len(frames) * (first_frame_width + abs(x_step_offset)), len(frames) * first_frame_height + abs(y_step_offset)))
+	for image_file_path_index in reversed(range(len(frames))):
+		image_file_path = frames[image_file_path_index]
+		print("Juxtaposing Image at Path: '" + image_file_path + "'")
+
+		# Taken From 3/4/2023 4:06 PM: https://stackoverflow.com/a/765829
+		image = Image.open(image_file_path)
+		image = image.convert("RGBA")
+		pixel_data = image.load()
+
+		current_image_width, current_image_height = image.size
+		for y in range(current_image_height):
+			for x in range(current_image_width):
+				pixel_color_rgba = pixel_data[x, y]
+
+				# Make all white pixels in the image transparent.
+				if pixel_color_rgba == (255, 255, 255, 255):
+					pixel_data[x, y] = (255, 255, 255, 0)
+				elif image_file_path_index != 0:
+					pixel_data[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], max(min(pixel_color_rgba[3] + current_opacity_offset, 255), minimum_opacity))
+
+		new_canvas_image.paste(image, (current_x_offset, current_y_offset + current_image_height), image)
+
+		current_x_offset -= x_step_offset
+		current_y_offset -= y_step_offset
+		current_opacity_offset -= opacity_step_offset
+
+	photo_image = ImageTk.PhotoImage(image=new_canvas_image)
+	# Need to offset by the amount of height the vertical control bar takes up.
+	# TODO: Should pull this from the vertical control box element rather than hardcoding this.
+	canvas.create_image(0, -50, image=photo_image, anchor="nw")
+	canvas.images.append(photo_image)
+
+def create_canvas(root : Tk, width : int, height : int):
+	canvas = Canvas(root, width=width, height=height, bg='white')
+	canvas.images = []
+	canvas.pack(fill=BOTH, expand=True)
+
+	return canvas
+
 def juxtapose_next(canvas : Canvas, frames_to_render = 3, increment_frames : int | None = None, x_offset = 10, y_offset = -10):
 	global current_frame_list
 	actual_increment_frames = frames_to_render if increment_frames == None else increment_frames
@@ -161,70 +156,85 @@ def juxtapose_next_global(window : Tk, canvas : Canvas, override_cooldown_timer 
 
 	return window.after(1000, juxtapose_next_global, window, canvas)
 
-juxtaposition_increment_frames_spin_box : tkinter.StringVar = None
-
 def spinbox_changed():
 	juxtaposition_increment_frames_spin_box.to = int(global_frames_to_render.get())
 
-current_column = 0
 def main():
 	global window, canvas
 	global global_frames_to_render, global_increment_frames, global_x_offset, global_y_offset, global_animation_interval
 	global juxtaposition_increment_frames_spin_box
 
+	# Check if we need to initialize the plot frame files for the juxtaposition.
+	if os.path.exists(frames_folder):
+		for file_name in os.listdir(frames_folder):
+			frames.append(frames_folder + os.sep + file_name)
+
+		frames = natural_sort(frames)
+
+	# If no frames are in the frames list, generate the frame images for the dataset.
+	if len(frames) <= 0:
+		generate_frames()
+
+	# Create the main window.
 	window = Tk()
 	window.title("Bar Chart Race Juxtaposition")
 	window.geometry("1600x900")
 
-	global_frames_to_render = tkinter.StringVar(value=3)
-	global_increment_frames = tkinter.StringVar(value=3)
-	global_x_offset = tkinter.StringVar(value=10)
-	global_y_offset = tkinter.StringVar(value=-10)
-	global_animation_interval = tkinter.StringVar(value=1)
+	# Initialize the global control variables.
+	global_frames_to_render = StringVar(value=3)
+	global_increment_frames = StringVar(value=3)
+	global_x_offset = StringVar(value=10)
+	global_y_offset = StringVar(value=-10)
+	global_animation_interval = StringVar(value=1)
 
 	controls_frame = Frame()
 	controls_frame.pack()
 
+	#
+	# Vertical Control Box Elements
+	#
 	def increment_column():
 		global current_column
 		previous_column = current_column
 		current_column += 1
 		return previous_column
 
-	spinbox_width = 5
-
 	juxtaposition_frame_amount_label = Label(controls_frame, text ="Number of Frames to Show: ", font = "50", anchor="w")
 	juxtaposition_frame_amount_label.grid(row=0, column=increment_column())
 
-	juxtaposition_frame_amount_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)   
+	juxtaposition_frame_amount_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)
 	juxtaposition_frame_amount_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_frame_increment_label = Label(controls_frame, text ="Frame Cycle Amount: ", font = "50") 
+	juxtaposition_frame_increment_label = Label(controls_frame, text ="Frame Cycle Amount: ", font = "50")
 	juxtaposition_frame_increment_label.grid(row=0, column=increment_column())
 
-	juxtaposition_increment_frames_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)   
+	juxtaposition_increment_frames_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)
 	juxtaposition_increment_frames_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_x_offset_label = Label(controls_frame, text ="X Offset: ", font = "50") 
+	juxtaposition_x_offset_label = Label(controls_frame, text ="X Offset: ", font = "50")
 	juxtaposition_x_offset_label.grid(row=0, column=increment_column())
 
-	juxtaposition_x_offset_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=-250, to=250, textvariable=global_x_offset, command=spinbox_changed)   
+	juxtaposition_x_offset_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=-250, to=250, textvariable=global_x_offset, command=spinbox_changed)
 	juxtaposition_x_offset_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_y_offset_label = Label(controls_frame, text ="Y Offset: ", font = "50") 
+	juxtaposition_y_offset_label = Label(controls_frame, text ="Y Offset: ", font = "50")
 	juxtaposition_y_offset_label.grid(row=0, column=increment_column())
 
-	juxtaposition_y_offset_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=-250, to=250, textvariable=global_y_offset, command=spinbox_changed)   
+	juxtaposition_y_offset_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=-250, to=250, textvariable=global_y_offset, command=spinbox_changed)
 	juxtaposition_y_offset_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_y_offset_label = Label(controls_frame, text ="Animation Interval: ", font = "50") 
+	juxtaposition_y_offset_label = Label(controls_frame, text ="Animation Interval: ", font = "50")
 	juxtaposition_y_offset_label.grid(row=0, column=increment_column())
 
-	juxtaposition_animation_interval_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=60, textvariable=global_animation_interval, command=spinbox_changed)   
+	juxtaposition_animation_interval_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=60, textvariable=global_animation_interval, command=spinbox_changed)
 	juxtaposition_animation_interval_spin_box.grid(row=0, column=increment_column())
+	#
+	#
+	#
 
 	canvas = create_canvas(window, 1920, 1080)
-	# juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
+
+	# Start juxtaposition loop.
 	juxtapose_next_global(window, canvas)
 
 	window.mainloop()
