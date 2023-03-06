@@ -1,10 +1,13 @@
 import math
-from tkinter import BOTH, BOTTOM, HORIZONTAL, LEFT, RIGHT, VERTICAL, X, Y, Frame, Scrollbar, Tk, Canvas
+from tkinter import BOTH, BOTTOM, HORIZONTAL, LEFT, RIGHT, VERTICAL, X, Y, Frame, Label, Scrollbar, Spinbox, Tk, Canvas
+import tkinter
 import pandas as pd
 from raceplotly.plots import barplot
 from PIL import Image, ImageTk
 import os
 import re
+from timeit import default_timer as timer
+from datetime import timedelta
 
 frames_folder = "frames"
 frames = []
@@ -47,7 +50,7 @@ if os.path.exists(frames_folder):
 if len(frames) <= 0:
 	generate_frames()
 
-def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_offset = -100, opacity_step_offset = None):
+def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_offset = -100, opacity_step_offset : int | None = None, minimum_opacity = 60):
 	print("Juxtaposing")
 	canvas.images = []
 
@@ -62,8 +65,8 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 	if opacity_step_offset == None:
 		opacity_step_offset = int(math.ceil(float(-255 / len(frames))))
 
-	base_image_width = frame_size[0] * len(frames)
-	base_image_height = frame_size[1] * len(frames)
+	base_image_width = abs(frame_size[0] * len(frames))
+	base_image_height = abs(frame_size[1] * len(frames))
 	base_image = Image.new("RGBA", (base_image_width, base_image_height))
 	for image_file_path_index in reversed(range(len(frames))):
 		image_file_path = frames[image_file_path_index]
@@ -83,7 +86,7 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 				if pixel_color_rgba == (255, 255, 255, 255):
 					pixel_data[x, y] = (255, 255, 255, 0)
 				elif image_file_path_index != 0:
-					pixel_data[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], max(min(pixel_color_rgba[3] + current_opacity_offset, 255), 75))
+					pixel_data[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], max(min(pixel_color_rgba[3] + current_opacity_offset, 255), minimum_opacity))
 
 		base_image.paste(image, (current_x_offset, current_y_offset + frame_size[1]), image)
 
@@ -93,57 +96,85 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 
 	# base_image.save("juxtaposed.png")
 	photo_image = ImageTk.PhotoImage(image=base_image)
-	canvas.create_image(0, 0, image=photo_image, anchor="nw")
+	# TODO: These are magic numbers because I cannot wrap my head around what this is even doing or why it function the way it does.
+	# canvas.create_image(100, -200, image=photo_image, anchor="nw")
+	canvas.create_image(1920 / 2 + 100, 1080 / 2, image=photo_image, anchor="center")
+	# canvas.create_image(0, 1080 / 2 + 500, image=photo_image, anchor="sw")
 	canvas.images.append(photo_image)
 
-def create_canvas(root, width, height):
-	# canvas = Canvas(window, width=10000, height=10000, bg='white')
-	# canvas.images = []
-	# canvas.pack()
-
-	# Taken From 3/5/2023 5:00 PM: https://stackoverflow.com/a/7734187
-	frame=Frame(root,width=width,height=height)
-	frame.pack(expand=True, fill=BOTH) #.grid(row=0,column=0)
-	canvas=Canvas(frame,bg='#FFFFFF',width=width,height=height,scrollregion=(0,0,500,500))
-	hbar=Scrollbar(frame,orient=HORIZONTAL)
-	hbar.pack(side=BOTTOM,fill=X)
-	hbar.config(command=canvas.xview)
-	vbar=Scrollbar(frame,orient=VERTICAL)
-	vbar.pack(side=RIGHT,fill=Y)
-	vbar.config(command=canvas.yview)
-	canvas.config(width=width,height=height)
-	canvas.config(xscrollcommand=hbar.set, yscrollcommand=vbar.set)
-	canvas.pack(side=LEFT,expand=True,fill=BOTH)
+def create_canvas(root : Tk, width : int, height : int):
+	canvas = Canvas(root, width=width, height=height, bg='white')
+	canvas.images = []
+	canvas.pack(fill=BOTH, expand=True)
 
 	return canvas
 
+window = None
+canvas = None
+
+global_frames_to_render = None
+global_increment_frames = None
 current_frame_list = []
-def juxtapose_next(window : Tk, canvas : Canvas, frames_to_render = 3):
-	global current_frame_list
+time_since_last_juxtapose = None
+def juxtapose_next(window : Tk, canvas : Canvas, frames_to_render = 3, increment_frames : int | None = None, override_cooldown_timer = False):
+	global time_since_last_juxtapose
+
+	if override_cooldown_timer or time_since_last_juxtapose == None or timedelta(seconds=timer() - time_since_last_juxtapose).seconds <= 1:
+		global current_frame_list
+		actual_increment_frames = frames_to_render if increment_frames == None else increment_frames
+		
+		canvas.delete("all")
+
+		if len(current_frame_list) < frames_to_render:
+			current_frame_list.extend(frames)
+
+		juxtapose(canvas, current_frame_list[:frames_to_render], 10, -10, minimum_opacity=100)
+
+		for _ in range(actual_increment_frames):
+			if len(current_frame_list) <= 0:
+				break
+			current_frame_list.pop(0)
+
+	time_since_last_juxtapose = timer()
+	return window.after(1000, juxtapose_next, window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
+
+juxtaposition_frame_amount_spin_box : tkinter.StringVar = None
+
+def spinbox_changed():
+	juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()), True)
+	juxtaposition_frame_amount_spin_box.to = int(global_frames_to_render.get())
+	# Should force the increment frames spinbox to be from 1 to the value of global_frames_to_render, but doesn't work for some reason.
+	global_increment_frames.set(int(global_frames_to_render.get()))
+	juxtaposition_frame_amount_spin_box.pack()
 	
-	canvas.delete("all")
+def main():
+	global window, canvas
+	global global_frames_to_render, global_increment_frames
+	global juxtaposition_frame_amount_spin_box
 
-	if len(current_frame_list) < frames_to_render:
-		current_frame_list.extend(frames)
-		print(str(current_frame_list))
-
-	juxtapose(canvas, current_frame_list[:frames_to_render])
-
-	print("len(current_frame_list): " + str(len(current_frame_list)))
-	for _ in range(frames_to_render):
-		if len(current_frame_list) <= 0:
-			break
-		current_frame_list.pop(0)
-
-	window.after(1000, juxtapose_next, window, canvas, frames_to_render)
-
-if __name__ == "__main__":
 	window = Tk()
 	window.title("Bar Chart Race Juxtaposition")
 	window.geometry("1600x900")
 
-	canvas = create_canvas(window, 1920, 1080)
+	global_frames_to_render = tkinter.StringVar(value=3)
+	global_increment_frames = tkinter.StringVar(value=3)
 
-	juxtapose_next(window, canvas, 3)
+	juxtaposition_frame_amount_label = Label(window, text ="Number of Frames to Show", font = "50") 
+	juxtaposition_frame_amount_label.pack()
+
+	juxtaposition_frame_amount_spin_box = Spinbox(window, from_ = 1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)   
+	juxtaposition_frame_amount_spin_box.pack()
+
+	juxtaposition_frame_increment_label = Label(window, text ="Frame Cycle Amount", font = "50") 
+	juxtaposition_frame_increment_label.pack()
+
+	juxtaposition_frame_amount_spin_box = Spinbox(window, from_ = 1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)   
+	juxtaposition_frame_amount_spin_box.pack()
+
+	canvas = create_canvas(window, 1920, 1080)
+	juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
 
 	window.mainloop()
+
+if __name__ == "__main__":
+	main()
