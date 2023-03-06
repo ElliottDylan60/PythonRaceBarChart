@@ -163,6 +163,7 @@ def main():
 	global window, canvas
 	global global_frames_to_render, global_increment_frames, global_x_offset, global_y_offset, global_animation_interval
 	global juxtaposition_increment_frames_spin_box
+	global frames
 
 	# Check if we need to initialize the plot frame files for the juxtaposition.
 	if os.path.exists(frames_folder):
