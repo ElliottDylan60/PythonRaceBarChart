@@ -157,7 +157,8 @@ def juxtapose_next_global(window : Tk, canvas : Canvas, override_cooldown_timer 
 	return window.after(1000, juxtapose_next_global, window, canvas)
 
 def spinbox_changed():
-	juxtaposition_increment_frames_spin_box.to = int(global_frames_to_render.get())
+	# Limit the increment frames to the maximum of the frames we are rendering at once.
+	juxtaposition_increment_frames_spin_box.config(to=int(global_frames_to_render.get()))
 
 def main():
 	global window, canvas
