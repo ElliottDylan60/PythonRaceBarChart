@@ -54,8 +54,8 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 	print("Juxtaposing")
 	canvas.images = []
 
-	current_x_offset = len(frames) * x_step_offset
-	current_y_offset = len(frames) * y_step_offset
+	current_x_offset = (len(frames) - 1) * x_step_offset
+	current_y_offset = (len(frames) - 1) * y_step_offset
 	current_opacity_offset = -255
 
 	frame = Image.open(frames[0])
@@ -100,7 +100,7 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 	# TODO: These are magic numbers because I cannot wrap my head around what this is even doing or why it function the way it does.
 	# canvas.create_image(100, -200, image=photo_image, anchor="nw")
 	# canvas.create_image(1920 / 2 + 100, 1080 / 2, image=photo_image, anchor="center")
-	canvas.create_image(0, -250, image=photo_image, anchor="nw")
+	canvas.create_image(0, -50, image=photo_image, anchor="nw")
 	# canvas.create_image(0, 1080 / 2 + 500, image=photo_image, anchor="sw")
 	canvas.images.append(photo_image)
 
@@ -108,6 +108,7 @@ def create_canvas(root : Tk, width : int, height : int):
 	canvas = Canvas(root, width=width, height=height, bg='white')
 	canvas.images = []
 	canvas.pack(fill=BOTH, expand=True)
+	# canvas.grid(row=1)
 
 	return canvas
 
@@ -164,7 +165,8 @@ juxtaposition_increment_frames_spin_box : tkinter.StringVar = None
 
 def spinbox_changed():
 	juxtaposition_increment_frames_spin_box.to = int(global_frames_to_render.get())
-	
+
+current_column = 0
 def main():
 	global window, canvas
 	global global_frames_to_render, global_increment_frames, global_x_offset, global_y_offset, global_animation_interval
@@ -180,35 +182,46 @@ def main():
 	global_y_offset = tkinter.StringVar(value=-10)
 	global_animation_interval = tkinter.StringVar(value=1)
 
-	juxtaposition_frame_amount_label = Label(window, text ="Number of Frames to Show", font = "50") 
-	juxtaposition_frame_amount_label.pack()
+	controls_frame = Frame()
+	controls_frame.pack()
 
-	juxtaposition_frame_amount_spin_box = Spinbox(window, from_=1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)   
-	juxtaposition_frame_amount_spin_box.pack()
+	def increment_column():
+		global current_column
+		previous_column = current_column
+		current_column += 1
+		return previous_column
 
-	juxtaposition_frame_increment_label = Label(window, text ="Frame Cycle Amount", font = "50") 
-	juxtaposition_frame_increment_label.pack()
+	spinbox_width = 5
 
-	juxtaposition_increment_frames_spin_box = Spinbox(window, from_=1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)   
-	juxtaposition_increment_frames_spin_box.pack()
+	juxtaposition_frame_amount_label = Label(controls_frame, text ="Number of Frames to Show: ", font = "50", anchor="w")
+	juxtaposition_frame_amount_label.grid(row=0, column=increment_column())
 
-	juxtaposition_x_offset_label = Label(window, text ="X Offset", font = "50") 
-	juxtaposition_x_offset_label.pack()
+	juxtaposition_frame_amount_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=len(frames), textvariable=global_frames_to_render, command=spinbox_changed)   
+	juxtaposition_frame_amount_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_x_offset_spin_box = Spinbox(window, from_=-250, to=250, textvariable=global_x_offset, command=spinbox_changed)   
-	juxtaposition_x_offset_spin_box.pack()
+	juxtaposition_frame_increment_label = Label(controls_frame, text ="Frame Cycle Amount: ", font = "50") 
+	juxtaposition_frame_increment_label.grid(row=0, column=increment_column())
 
-	juxtaposition_y_offset_label = Label(window, text ="Y Offset", font = "50") 
-	juxtaposition_y_offset_label.pack()
+	juxtaposition_increment_frames_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=len(frames), textvariable=global_increment_frames, command=spinbox_changed)   
+	juxtaposition_increment_frames_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_y_offset_spin_box = Spinbox(window, from_=-250, to=250, textvariable=global_y_offset, command=spinbox_changed)   
-	juxtaposition_y_offset_spin_box.pack()
+	juxtaposition_x_offset_label = Label(controls_frame, text ="X Offset: ", font = "50") 
+	juxtaposition_x_offset_label.grid(row=0, column=increment_column())
 
-	juxtaposition_y_offset_label = Label(window, text ="Animation Interval", font = "50") 
-	juxtaposition_y_offset_label.pack()
+	juxtaposition_x_offset_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=-250, to=250, textvariable=global_x_offset, command=spinbox_changed)   
+	juxtaposition_x_offset_spin_box.grid(row=0, column=increment_column())
 
-	juxtaposition_animation_interval_spin_box = Spinbox(window, from_=1, to=60, textvariable=global_animation_interval, command=spinbox_changed)   
-	juxtaposition_animation_interval_spin_box.pack()
+	juxtaposition_y_offset_label = Label(controls_frame, text ="Y Offset: ", font = "50") 
+	juxtaposition_y_offset_label.grid(row=0, column=increment_column())
+
+	juxtaposition_y_offset_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=-250, to=250, textvariable=global_y_offset, command=spinbox_changed)   
+	juxtaposition_y_offset_spin_box.grid(row=0, column=increment_column())
+
+	juxtaposition_y_offset_label = Label(controls_frame, text ="Animation Interval: ", font = "50") 
+	juxtaposition_y_offset_label.grid(row=0, column=increment_column())
+
+	juxtaposition_animation_interval_spin_box = Spinbox(controls_frame, width=spinbox_width, from_=1, to=60, textvariable=global_animation_interval, command=spinbox_changed)   
+	juxtaposition_animation_interval_spin_box.grid(row=0, column=increment_column())
 
 	canvas = create_canvas(window, 1920, 1080)
 	# juxtapose_next(window, canvas, int(global_frames_to_render.get()), int(global_increment_frames.get()))
