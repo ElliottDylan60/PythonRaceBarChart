@@ -15,6 +15,7 @@ print("Frames: " + str(len(my_raceplot_plot.frames)))
 frames_folder = "frames"
 os.makedirs(frames_folder, exist_ok=True)
 
+print("Saving Images...")
 # Taken From 3/5/2023 4:03 PM: https://stackoverflow.com/a/73788157
 # generate images for each step in animation
 frames = []
@@ -27,17 +28,25 @@ for s, fr in enumerate(my_raceplot_plot.frames):
 	file_name = frames_folder + os.sep + "frame" + str(len(frames)) + ".png"
 	my_raceplot_plot.write_image(file=file_name, format="png")
 	frames.append(file_name)
+	print("Added frame " + str(len(frames)) + " of " + str(len(my_raceplot_plot.frames)))
 
 # create animated GIF
 # frames[0].save("test.gif", save_all=True, append_images=frames[1:], optimize=True, duration=500, loop=0)
 
 def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_offset = -100, opacity_step_offset = -100):
-	current_x_offset = 0
-	current_y_offset = 0
-	current_opacity_offset = 0
+	# current_x_offset = 0
+	# current_y_offset = 0
+	# current_opacity_offset = 0
+	current_x_offset = len(frames) * x_step_offset
+	current_y_offset = len(frames) * y_step_offset
+	current_opacity_offset = -255
 
-	for image_file_path_index in range(len(frames)):
-	# for image_file_path_index in reversed(range(len(frames))):
+	# base_image = Image.open(frames[0])
+	# base_image.convert("RGBA")
+
+	base_image = Image.new("RGBA", (1920, 1080))
+
+	for image_file_path_index in reversed(range(len(frames))):
 		image_file_path = frames[image_file_path_index]
 
 		# Taken From 3/4/2023 4:06 PM: https://stackoverflow.com/a/765829
@@ -47,7 +56,6 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 		pixdata = img.load()
 
 		width, height = img.size
-		# if image_file_path_index != 0:
 		for y in range(height):
 			for x in range(width):
 				pixel_color_rgba = pixdata[x, y]
@@ -55,16 +63,18 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 				# Make all white pixels in the image transparent.
 				if pixel_color_rgba == (255, 255, 255, 255):
 					pixdata[x, y] = (255, 255, 255, 0)
-				else:
+				elif image_file_path_index != 0:
 					pixdata[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], min(pixel_color_rgba[3] + current_opacity_offset, 255))
 
-		photo_image = ImageTk.PhotoImage(img)
-		canvas.create_image(current_x_offset + (width / 2), current_y_offset + (height / 2), image=photo_image)
-		canvas.images.append(photo_image)
+		base_image.paste(img, (current_x_offset, current_y_offset), img)
 
-		current_x_offset += x_step_offset
-		current_y_offset += y_step_offset
-		current_opacity_offset += opacity_step_offset
+		current_x_offset -= x_step_offset
+		current_y_offset -= y_step_offset
+		current_opacity_offset -= opacity_step_offset
+
+	photo_image = ImageTk.PhotoImage(base_image)
+	canvas.create_image(1920 / 2, 1080 / 2, image=photo_image)
+	canvas.images.append(photo_image)
 
 max_frames = 2
 if __name__ == "__main__":
