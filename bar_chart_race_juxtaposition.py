@@ -37,7 +37,7 @@ current_column = 0
 
 # Contains all the data for a dataset, including filepath to the csv and what the column keys and labels should be.
 class DatasetData:
-	def __init__(self, dataset_file_path : str, item_column : str, value_column : str, time_column : str, item_label : str, value_label : str, frame_duration = 1):
+	def __init__(self, dataset_file_path : str, item_column : str, value_column : str, time_column : str, item_label : str, value_label : str, frame_duration = 1, date_format : str | None = None):
 		self.dataset_file_path = dataset_file_path
 		self.item_column = item_column
 		self.value_column = value_column
@@ -45,10 +45,13 @@ class DatasetData:
 		self.item_label = item_label
 		self.value_label = value_label
 		self.frame_duration = frame_duration
+		self.date_format = date_format
 
 dataset_data_array : list[DatasetData] = [
-	DatasetData("FAOSTAT_data.csv", "Item", "Value", "Year", "Top 10 Crops", "Production Quantity (tonnes)", 1), 
-	DatasetData("covid.csv", "AL", "AL", "date", "AL", "Deaths"),
+	DatasetData(dataset_file_path = "FAOSTAT_data.csv", item_column = "Item", value_column = "Value", time_column = "Year", item_label = "Top 10 Crops", value_label = "Production Quantity (tonnes)", frame_duration = 1), 
+	DatasetData(dataset_file_path = "covid.csv", item_column = "WA", value_column = "WA", time_column = "date", item_label = "Washington State COVID-19 Cases", value_label = "Deaths"),
+	DatasetData(dataset_file_path = "urban_pop.csv", item_column = "United States", value_column = "United States", time_column = "year", item_label = "U.S. Urban Population", value_label = "Population"),
+	DatasetData(dataset_file_path = "baseball.csv", item_column = "name", value_column = "hr", time_column = "year", item_label = "Player Name", value_label = "Home Runs", date_format = "Seasons Played: yyyy"),
 ]
 
 # Taken From 3/5/2023 5:39 PM: https://stackoverflow.com/a/11150413
@@ -69,7 +72,8 @@ def generate_frames(dataset_data : DatasetData):
 		dataset_filepath_to_frames_map[dataset_data.dataset_file_path] = []
 
 		bar_chart_race = barplot(df, item_column=dataset_data.item_column, value_column=dataset_data.value_column, time_column=dataset_data.time_column)
-		bar_chart_race_plot = bar_chart_race.plot(item_label = dataset_data.item_label, value_label = dataset_data.value_label, frame_duration = dataset_data.frame_duration)
+		# TODO: Date format doesn't seem to work for 'baseball.csv'.
+		bar_chart_race_plot = bar_chart_race.plot(item_label = dataset_data.item_label, value_label = dataset_data.value_label, frame_duration = dataset_data.frame_duration, date_format = dataset_data.date_format)
 
 		print("Writing " + str(len(bar_chart_race_plot.frames)) + " frames to disk for the dataset '" + dataset_data.dataset_file_path + "'...")
 		# Taken From 3/5/2023 4:03 PM: https://stackoverflow.com/a/73788157
@@ -134,7 +138,8 @@ def juxtapose(canvas : Canvas, frames : list[str], x_step_offset = 100, y_step_o
 					pixel_data[x, y] = (255, 255, 255, 0)
 				elif image_file_path_index != 0:
 					# If this isn't the first image we are showing (the one closest to 0, 0), modify it's opacity to be the current pixel's opacity offset by the current opacity offset, constrained to between the minimum_opacity value and 255.
-					pixel_data[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], max(min(pixel_color_rgba[3] + current_opacity_offset, 255), minimum_opacity))
+					new_pixel_opacity = max(min(pixel_color_rgba[3] + current_opacity_offset, 255), minimum_opacity)
+					pixel_data[x, y] = (pixel_color_rgba[0], pixel_color_rgba[1], pixel_color_rgba[2], new_pixel_opacity)
 
 		# Paste the juxtaposed image to the canvas image.
 		new_canvas_image.paste(image, (current_x_offset, current_y_offset + current_image_height), image)
